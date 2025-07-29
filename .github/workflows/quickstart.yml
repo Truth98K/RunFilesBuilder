@@ -1,4 +1,4 @@
-name: Make quickstart run files
+name: Build luci-app-quickstart RunFile
 
 on:
   workflow_dispatch:
@@ -8,46 +8,52 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout This Repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set version info
         id: version
         run: |
-          VERSION=$(cat run/x86/VERSION || echo "0.9.7")
-          echo "version=$VERSION" >> $GITHUB_ENV
+          if [ -f run/x86/VERSION ]; then
+            VERSION=$(cat run/x86/VERSION)
+          else
+            # 版本号默认写死，也可以解析 ipk 文件名
+            VERSION="0.9.7-1"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Prepare build dir
+      - name: Prepare build directory
         run: |
           mkdir -p quickstart-x86
-          cp run/x86/*.ipk quickstart-x86/
+          cp run/x86/luci-app-quickstart_${{ steps.version.outputs.version }}_x86_64.ipk quickstart-x86/ || echo "警告：找不到对应 ipk，跳过"
 
       - name: Create install.sh script
         run: |
           cat << 'EOF' > quickstart-x86/install.sh
 #!/bin/sh
-opkg update
-opkg install *.ipk || exit 1
-echo "✅ luci-app-quickstart 安装完成"
+echo "正在更新软件源..."
+opkg update || exit 1
+echo "正在安装 luci-app-quickstart..."
+opkg install luci-app-quickstart_*.ipk || exit 1
+echo "安装完成！"
 EOF
           chmod +x quickstart-x86/install.sh
 
-      - name: Clone makeself
+      - name: Install makeself
+        run: sudo apt-get update && sudo apt-get install -y makeself
+
+      - name: Build .run installer
         run: |
           git clone https://github.com/megastep/makeself.git
-
-      - name: Make .run file
-        run: |
           mv quickstart-x86 makeself/
           cd makeself
-          ./makeself.sh quickstart-x86 luci-app-quickstart-${{ env.version }}-x86_64.run \
-            "Quickstart Installer" ./install.sh
+          ./makeself.sh quickstart-x86 luci-app-quickstart-${{ steps.version.outputs.version }}-x86_64.run "luci-app-quickstart Installer" ./install.sh
 
-      - name: Upload Release
+      - name: Upload run file to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: quickstart-${{ env.version }}
-          name: "Quickstart-${{ env.version }}"
+          tag_name: quickstart-${{ steps.version.outputs.version }}
+          name: "luci-app-quickstart-${{ steps.version.outputs.version }}"
           files: makeself/*.run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
