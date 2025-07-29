@@ -8,34 +8,35 @@ on:
         required: true
         default: '0.9.7-1'
       download_url:
-        description: '完整下载 URL，指向 ipk 文件'
+        description: '完整IPK下载链接'
         required: true
         default: 'https://example.com/x86_64/luci-app-quickstart_0.9.7-1_x86_64.ipk'
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: 安装依赖
-        run: sudo apt-get update && sudo apt-get install -y curl makeself
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl makeself
 
       - name: 创建目录
         run: mkdir -p build/x86_64
 
-      - name: 下载 ipk
-        run: curl -fLo build/x86_64/luci-app-quickstart_${{ github.event.inputs.version }}_x86_64.ipk ${{ github.event.inputs.download_url }}
-
-      - name: 创建安装脚本
+      - name: 下载IPK
         run: |
-          cat > build/x86_64/install.sh << 'EOF'
-#!/bin/sh
-echo "更新软件源..."
-opkg update || exit 1
-echo "安装 luci-app-quickstart..."
-opkg install luci-app-quickstart_*.ipk || exit 1
-echo "安装完成"
-EOF
+          curl -fLo build/x86_64/luci-app-quickstart_${{ github.event.inputs.version }}_x86_64.ipk "${{ github.event.inputs.download_url }}"
+
+      - name: 生成安装脚本
+        run: |
+          echo '#!/bin/sh' > build/x86_64/install.sh
+          echo 'echo "更新软件源..."' >> build/x86_64/install.sh
+          echo 'opkg update || exit 1' >> build/x86_64/install.sh
+          echo 'echo "安装 luci-app-quickstart..."' >> build/x86_64/install.sh
+          echo 'opkg install luci-app-quickstart_*.ipk || exit 1' >> build/x86_64/install.sh
+          echo 'echo "安装完成"' >> build/x86_64/install.sh
           chmod +x build/x86_64/install.sh
 
       - name: 制作 .run 文件
