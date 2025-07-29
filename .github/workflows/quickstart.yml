@@ -1,59 +1,77 @@
-name: Make luci-app-quickstart RunFile
+name: Build luci-app-quickstart RunFiles Multi-Arch
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: '指定版本号（格式如0.9.7-1），留空则自动下载最新'
+        required: false
+        default: ''
+      download_base_url:
+        description: 'ipk 文件下载基础 URL（必须包含 x86_64 和 aarch64 目录）'
+        required: true
+        default: 'https://example.com/luci-app-quickstart'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Setup env
+        run: sudo apt-get update && sudo apt-get install -y curl makeself
 
-      - name: Set version info
-        id: version
+      - name: Create build dir
+        run: mkdir -p build/${{ matrix.arch }}
+
+      - name: Download ipk for ${{ matrix.arch }}
+        id: download
         run: |
-          if [ -f run/x86/VERSION ]; then
-            VERSION=$(cat run/x86/VERSION)
+          version_input="${{ github.event.inputs.version }}"
+          base_url="${{ github.event.inputs.download_base_url }}"
+          arch="${{ matrix.arch }}"
+          if [ -z "$version_input" ]; then
+            echo "未指定版本号，自动获取最新版本"
+            # 这里示范通过list文件或api自动获取最新版本号，按实际情况改写
+            version=$(curl -s "${base_url}/${arch}/latest.txt" || echo "0.9.7-1")
           else
-            # 版本号默认写死，也可以解析 ipk 文件名
-            VERSION="0.9.7-1"
+            version="$version_input"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "版本: $version"
+          ipk_url="${base_url}/${arch}/luci-app-quickstart_${version}_${arch}.ipk"
+          echo "下载URL: $ipk_url"
+          curl -fLo build/${arch}/luci-app-quickstart_${version}_${arch}.ipk "$ipk_url"
+          echo "version=$version" >> $GITHUB_OUTPUT
 
-      - name: Prepare build directory
+      - name: Create install.sh for ${{ matrix.arch }}
         run: |
-          mkdir -p quickstart-x86
-          cp run/x86/luci-app-quickstart_${{ steps.version.outputs.version }}_x86_64.ipk quickstart-x86/ || echo "警告：找不到对应 ipk，跳过"
-
-      - name: Create install.sh script
-        run: |
-          cat << 'EOF' > quickstart-x86/install.sh
+          cat << 'EOF' > build/${{ matrix.arch }}/install.sh
 #!/bin/sh
-echo "正在更新软件源..."
+echo "更新软件源..."
 opkg update || exit 1
-echo "正在安装 luci-app-quickstart..."
+echo "安装 luci-app-quickstart ipk..."
 opkg install luci-app-quickstart_*.ipk || exit 1
-echo "安装完成！"
+echo "安装完成"
 EOF
-          chmod +x quickstart-x86/install.sh
+          chmod +x build/${{ matrix.arch }}/install.sh
 
-      - name: Install makeself
-        run: sudo apt-get update && sudo apt-get install -y makeself
-
-      - name: Build .run installer
+      - name: Build .run installer for ${{ matrix.arch }}
         run: |
           git clone https://github.com/megastep/makeself.git
-          mv quickstart-x86 makeself/
+          mv build/${{ matrix.arch }} makeself/
           cd makeself
-          ./makeself.sh quickstart-x86 luci-app-quickstart-${{ steps.version.outputs.version }}-x86_64.run "luci-app-quickstart Installer" ./install.sh
+          version=$(head -n 1 ../build/${{ matrix.arch }}/luci-app-quickstart_*_${{ matrix.arch }}.ipk | grep -oP '_(\d+\.\d+\.\d+-\d+)_') || true
+          ./makeself.sh ${matrix.arch} luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run "luci-app-quickstart Installer" ./install.sh
+          cd ..
 
-      - name: Upload run file to GitHub Release
+      - name: Upload run file for ${{ matrix.arch }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: quickstart-${{ steps.version.outputs.version }}
-          name: "luci-app-quickstart-${{ steps.version.outputs.version }}"
-          files: makeself/*.run
+          tag_name: quickstart-${{ steps.download.outputs.version }}
+          name: luci-app-quickstart-${{ steps.download.outputs.version }}
+          files: makeself/luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
