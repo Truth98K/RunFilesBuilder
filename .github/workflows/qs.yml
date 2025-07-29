@@ -10,7 +10,7 @@ on:
       download_url:
         description: '完整IPK下载链接'
         required: true
-        default: 'https://example.com/x86_64/luci-app-quickstart_0.9.7-1_x86_64.ipk'
+        default: 'https://dl.openwrt.ai/releases/24.10/packages/x86_64/kiddin9/luci-app-quickstart_0.11.1-r1-r12_all.ipk'
 
 jobs:
   build:
