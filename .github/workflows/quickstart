@@ -1,0 +1,53 @@
+name: Build QuickStart RunFile
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout This Repo
+        uses: actions/checkout@v4
+
+      - name: Set version info
+        id: version
+        run: |
+          VERSION=$(cat run/x86/VERSION || echo "0.9.7")
+          echo "version=$VERSION" >> $GITHUB_ENV
+
+      - name: Prepare build dir
+        run: |
+          mkdir -p quickstart-x86
+          cp run/x86/*.ipk quickstart-x86/
+
+      - name: Create install.sh script
+        run: |
+          cat << 'EOF' > quickstart-x86/install.sh
+#!/bin/sh
+opkg update
+opkg install *.ipk || exit 1
+echo "✅ luci-app-quickstart 安装完成"
+EOF
+          chmod +x quickstart-x86/install.sh
+
+      - name: Clone makeself
+        run: |
+          git clone https://github.com/megastep/makeself.git
+
+      - name: Make .run file
+        run: |
+          mv quickstart-x86 makeself/
+          cd makeself
+          ./makeself.sh quickstart-x86 luci-app-quickstart-${{ env.version }}-x86_64.run \
+            "Quickstart Installer" ./install.sh
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: quickstart-${{ env.version }}
+          name: "Quickstart-${{ env.version }}"
+          files: makeself/*.run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
