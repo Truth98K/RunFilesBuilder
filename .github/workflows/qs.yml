@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '指定版本号（格式如0.9.7-1），留空则自动下载最新'
+        description: '指定版本号（如0.9.7-1），不填自动获取latest.txt'
         required: false
         default: ''
       download_base_url:
-        description: 'ipk 文件下载基础 URL，目录下需有 x86_64 和 aarch64 文件夹'
+        description: 'ipk下载根地址，包含x86_64和aarch64目录'
         required: true
         default: 'https://example.com/luci-app-quickstart'
 
