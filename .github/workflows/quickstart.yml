@@ -1,4 +1,4 @@
-name: Build luci-app-quickstart RunFile
+name: Make luci-app-quickstart RunFile
 
 on:
   workflow_dispatch:
