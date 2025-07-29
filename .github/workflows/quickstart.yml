@@ -8,47 +8,49 @@ on:
         required: false
         default: ''
       download_base_url:
-        description: 'ipk 文件下载基础 URL（必须包含 x86_64 和 aarch64 目录）'
+        description: 'ipk 文件下载基础 URL，目录下需有 x86_64 和 aarch64 文件夹'
         required: true
         default: 'https://example.com/luci-app-quickstart'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     strategy:
       matrix:
         arch: [x86_64, aarch64]
 
     steps:
-      - name: Setup env
+      - name: 安装依赖
         run: sudo apt-get update && sudo apt-get install -y curl makeself
 
-      - name: Create build dir
+      - name: 创建构建目录
         run: mkdir -p build/${{ matrix.arch }}
 
-      - name: Download ipk for ${{ matrix.arch }}
+      - name: 下载 ipk 文件 ${{ matrix.arch }}
         id: download
         run: |
-          version_input="${{ github.event.inputs.version }}"
-          base_url="${{ github.event.inputs.download_base_url }}"
-          arch="${{ matrix.arch }}"
-          if [ -z "$version_input" ]; then
-            echo "未指定版本号，自动获取最新版本"
-            # 这里示范通过list文件或api自动获取最新版本号，按实际情况改写
-            version=$(curl -s "${base_url}/${arch}/latest.txt" || echo "0.9.7-1")
-          else
-            version="$version_input"
-          fi
-          echo "版本: $version"
-          ipk_url="${base_url}/${arch}/luci-app-quickstart_${version}_${arch}.ipk"
-          echo "下载URL: $ipk_url"
-          curl -fLo build/${arch}/luci-app-quickstart_${version}_${arch}.ipk "$ipk_url"
-          echo "version=$version" >> $GITHUB_OUTPUT
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          BASE_URL="${{ github.event.inputs.download_base_url }}"
+          ARCH="${{ matrix.arch }}"
 
-      - name: Create install.sh for ${{ matrix.arch }}
+          if [ -z "$VERSION_INPUT" ]; then
+            echo "未指定版本，尝试自动获取 latest.txt"
+            VERSION=$(curl -fsSL "${BASE_URL}/${ARCH}/latest.txt" || echo "0.9.7-1")
+          else
+            VERSION="$VERSION_INPUT"
+          fi
+
+          echo "版本号: $VERSION"
+          IPK_URL="${BASE_URL}/${ARCH}/luci-app-quickstart_${VERSION}_${ARCH}.ipk"
+          echo "下载地址: $IPK_URL"
+
+          curl -fLo build/${ARCH}/luci-app-quickstart_${VERSION}_${ARCH}.ipk "$IPK_URL"
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 创建安装脚本 ${{ matrix.arch }}
         run: |
-          cat << 'EOF' > build/${{ matrix.arch }}/install.sh
+          cat > build/${{ matrix.arch }}/install.sh << 'EOF'
 #!/bin/sh
 echo "更新软件源..."
 opkg update || exit 1
@@ -58,16 +60,15 @@ echo "安装完成"
 EOF
           chmod +x build/${{ matrix.arch }}/install.sh
 
-      - name: Build .run installer for ${{ matrix.arch }}
+      - name: 制作 .run 安装包 ${{ matrix.arch }}
         run: |
           git clone https://github.com/megastep/makeself.git
           mv build/${{ matrix.arch }} makeself/
           cd makeself
-          version=$(head -n 1 ../build/${{ matrix.arch }}/luci-app-quickstart_*_${{ matrix.arch }}.ipk | grep -oP '_(\d+\.\d+\.\d+-\d+)_') || true
-          ./makeself.sh ${matrix.arch} luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run "luci-app-quickstart Installer" ./install.sh
+          ./makeself.sh ${{ matrix.arch }} luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run "luci-app-quickstart Installer" ./install.sh
           cd ..
 
-      - name: Upload run file for ${{ matrix.arch }}
+      - name: 上传 Release 文件 ${{ matrix.arch }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: quickstart-${{ steps.download.outputs.version }}
