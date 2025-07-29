@@ -1,78 +1,56 @@
-name: Build luci-app-quickstart RunFiles Multi-Arch
+name: Build luci-app-quickstart RunFile
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: '指定版本号（如0.9.7-1），不填自动获取latest.txt'
-        required: false
-        default: ''
-      download_base_url:
-        description: 'ipk下载根地址，包含x86_64和aarch64目录'
+        description: '版本号，如0.9.7-1'
         required: true
-        default: 'https://example.com/luci-app-quickstart'
+        default: '0.9.7-1'
+      download_url:
+        description: '完整下载 URL，指向 ipk 文件'
+        required: true
+        default: 'https://example.com/x86_64/luci-app-quickstart_0.9.7-1_x86_64.ipk'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        arch: [x86_64, aarch64]
 
     steps:
       - name: 安装依赖
         run: sudo apt-get update && sudo apt-get install -y curl makeself
 
-      - name: 创建构建目录
-        run: mkdir -p build/${{ matrix.arch }}
+      - name: 创建目录
+        run: mkdir -p build/x86_64
 
-      - name: 下载 ipk 文件 ${{ matrix.arch }}
-        id: download
+      - name: 下载 ipk
+        run: curl -fLo build/x86_64/luci-app-quickstart_${{ github.event.inputs.version }}_x86_64.ipk ${{ github.event.inputs.download_url }}
+
+      - name: 创建安装脚本
         run: |
-          VERSION_INPUT="${{ github.event.inputs.version }}"
-          BASE_URL="${{ github.event.inputs.download_base_url }}"
-          ARCH="${{ matrix.arch }}"
-
-          if [ -z "$VERSION_INPUT" ]; then
-            echo "未指定版本，尝试自动获取 latest.txt"
-            VERSION=$(curl -fsSL "${BASE_URL}/${ARCH}/latest.txt" || echo "0.9.7-1")
-          else
-            VERSION="$VERSION_INPUT"
-          fi
-
-          echo "版本号: $VERSION"
-          IPK_URL="${BASE_URL}/${ARCH}/luci-app-quickstart_${VERSION}_${ARCH}.ipk"
-          echo "下载地址: $IPK_URL"
-
-          curl -fLo build/${ARCH}/luci-app-quickstart_${VERSION}_${ARCH}.ipk "$IPK_URL"
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: 创建安装脚本 ${{ matrix.arch }}
-        run: |
-          cat > build/${{ matrix.arch }}/install.sh << 'EOF'
+          cat > build/x86_64/install.sh << 'EOF'
 #!/bin/sh
 echo "更新软件源..."
 opkg update || exit 1
-echo "安装 luci-app-quickstart ipk..."
+echo "安装 luci-app-quickstart..."
 opkg install luci-app-quickstart_*.ipk || exit 1
 echo "安装完成"
 EOF
-          chmod +x build/${{ matrix.arch }}/install.sh
+          chmod +x build/x86_64/install.sh
 
-      - name: 制作 .run 安装包 ${{ matrix.arch }}
+      - name: 制作 .run 文件
         run: |
           git clone https://github.com/megastep/makeself.git
-          mv build/${{ matrix.arch }} makeself/
+          mv build/x86_64 makeself/
           cd makeself
-          ./makeself.sh ${{ matrix.arch }} luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run "luci-app-quickstart Installer" ./install.sh
+          ./makeself.sh x86_64 luci-app-quickstart-${{ github.event.inputs.version }}-x86_64.run "luci-app-quickstart 安装器" ./install.sh
           cd ..
 
-      - name: 上传 Release 文件 ${{ matrix.arch }}
+      - name: 上传 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: quickstart-${{ steps.download.outputs.version }}
-          name: luci-app-quickstart-${{ steps.download.outputs.version }}
-          files: makeself/luci-app-quickstart-${{ steps.download.outputs.version }}-${{ matrix.arch }}.run
+          tag_name: "quickstart-${{ github.event.inputs.version }}"
+          name: "luci-app-quickstart-${{ github.event.inputs.version }}"
+          files: makeself/luci-app-quickstart-${{ github.event.inputs.version }}-x86_64.run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
