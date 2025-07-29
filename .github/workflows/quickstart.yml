@@ -1,4 +1,4 @@
-name: Build QuickStart RunFile
+name: Make quickstart run files
 
 on:
   workflow_dispatch:
