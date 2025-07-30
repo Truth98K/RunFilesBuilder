@@ -2,56 +2,50 @@ name: Make luci-app-quickstart RunFile
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: '版本号，如0.9.7-1'
-        required: true
-        default: '0.9.7-1'
-      download_url:
-        description: '完整IPK下载链接'
-        required: true
-        default: 'https://dl.openwrt.ai/releases/24.10/packages/x86_64/kiddin9/luci-app-quickstart_0.11.1-r1-r12_all.ipk'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  make-run:
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: 安装依赖
+      - name: 📥 Checkout
+        uses: actions/checkout@v3
+
+      - name: 📦 Install makeself and curl
+        run: sudo apt-get update && sudo apt-get install -y makeself curl
+
+      - name: 🚀 Download luci-app-quickstart ipk packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl makeself
+          mkdir -p store
+          chmod +x shell/quickstart.sh
+          ./shell/quickstart.sh
 
-      - name: 创建目录
-        run: mkdir -p build/x86_64
-
-      - name: 下载IPK
+      - name: 📋 Copy install.sh to store folder
         run: |
-          curl -fLo build/x86_64/luci-app-quickstart_${{ github.event.inputs.version }}_x86_64.ipk "${{ github.event.inputs.download_url }}"
+          cp shell/install.sh store/install.sh
+          chmod +x store/install.sh
 
-      - name: 生成安装脚本
+      - name: 🔍 Extract version and package to .run
+        id: pack
         run: |
-          echo '#!/bin/sh' > build/x86_64/install.sh
-          echo 'echo "更新软件源..."' >> build/x86_64/install.sh
-          echo 'opkg update || exit 1' >> build/x86_64/install.sh
-          echo 'echo "安装 luci-app-quickstart..."' >> build/x86_64/install.sh
-          echo 'opkg install luci-app-quickstart_*.ipk || exit 1' >> build/x86_64/install.sh
-          echo 'echo "安装完成"' >> build/x86_64/install.sh
-          chmod +x build/x86_64/install.sh
+          mkdir -p output
+          QUICKSTART_IPK=$(ls store/luci-app-quickstart_*.ipk | head -n 1)
+          VERSION=$(basename "$QUICKSTART_IPK" | sed -n 's/^luci-app-quickstart_\([^-]*-[^_]*\)_.*$/\1/p')
+          if [ -z "$VERSION" ]; then
+            echo "❌ Failed to extract version!"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          makeself store "output/luci-app-quickstart-${VERSION}_all.run" \
+            "luci-app-quickstart Installer v${VERSION}" ./install.sh
 
-      - name: 制作 .run 文件
-        run: |
-          git clone https://github.com/megastep/makeself.git
-          mv build/x86_64 makeself/
-          cd makeself
-          ./makeself.sh x86_64 luci-app-quickstart-${{ github.event.inputs.version }}-x86_64.run "luci-app-quickstart 安装器" ./install.sh
-          cd ..
-
-      - name: 上传 Release
-        uses: softprops/action-gh-release@v2
+      - name: 📤 Upload .run file to Release
+        uses: softprops/action-gh-release@v2.1.0
         with:
-          tag_name: "quickstart-${{ github.event.inputs.version }}"
-          name: "luci-app-quickstart-${{ github.event.inputs.version }}"
-          files: makeself/luci-app-quickstart-${{ github.event.inputs.version }}-x86_64.run
+          tag_name: "luci-app-quickstart-${{ steps.pack.outputs.version }}"
+          name: "luci-app-quickstart-${{ steps.pack.outputs.version }}"
+          body_path: ${{ github.workspace }}/info/store.md
+          files: output/*.run
+          token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
