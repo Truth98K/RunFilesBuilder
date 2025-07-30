@@ -1,4 +1,12 @@
-name: Make luci-app-quickstart RunFile
+#=================================================
+# https://github.com/wukongdaily/RunFilesBuilder
+# Description: Build luci-app-quickstart RunFiles using GitHub Actions
+# Lisence: MIT
+# Author: wukongdaily
+# Blog: wkdaily.cpolar.cn
+#=================================================
+
+name: Make luci-app-quickstart run files
 
 on:
   workflow_dispatch:
@@ -11,40 +19,48 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v3
 
-      - name: 📦 Install makeself and curl
+      - name: 📦 安装 makeself 工具
         run: sudo apt-get update && sudo apt-get install -y makeself curl
 
-      - name: 🚀 Download luci-app-quickstart ipk packages
+      - name: 🚀 下载 luci-app-quickstart 所有 ipk
         run: |
-          mkdir -p store
           chmod +x shell/quickstart.sh
           ./shell/quickstart.sh
 
-      - name: 📋 Copy install.sh to store folder
+      - name: 📋 拷贝 install.sh 到各平台目录
         run: |
-          cp shell/install.sh store/install.sh
-          chmod +x store/install.sh
+          cp shell/install.sh x86_64/install.sh
+          cp shell/install.sh aarch64_generic/install.sh
+          chmod +x x86_64/install.sh aarch64_generic/install.sh
 
-      - name: 🔍 Extract version and package to .run
+      - name: 🔍 提取版本号并打包
         id: pack
         run: |
           mkdir -p output
-          QUICKSTART_IPK=$(ls store/luci-app-quickstart_*.ipk | head -n 1)
+
+          # 获取版本
+          QUICKSTART_IPK=$(ls aarch64_generic/luci-app-quickstart_*.ipk | head -n 1)
           VERSION=$(basename "$QUICKSTART_IPK" | sed -n 's/^luci-app-quickstart_\([^-]*-[^_]*\)_.*$/\1/p')
+
           if [ -z "$VERSION" ]; then
-            echo "❌ Failed to extract version!"
+            echo "❌ 无法提取版本号"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          makeself store "output/luci-app-quickstart-${VERSION}_all.run" \
-            "luci-app-quickstart Installer v${VERSION}" ./install.sh
 
-      - name: 📤 Upload .run file to Release
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # 打包两个平台
+          for PLATFORM in x86_64 aarch64_generic; do
+            makeself "$PLATFORM" "output/luci-app-quickstart-${VERSION}_${PLATFORM}.run" \
+              "luci-app-quickstart ${PLATFORM} Installer v${VERSION}" ./install.sh
+          done
+
+      - name: 📤 上传 .run 文件到 release
         uses: softprops/action-gh-release@v2.1.0
         with:
-          tag_name: "luci-app-quickstart-${{ steps.pack.outputs.version }}"
-          name: "luci-app-quickstart-${{ steps.pack.outputs.version }}"
-          body_path: ${{ github.workspace }}/info/store.md
+          tag_name: "quickstart-${{ steps.pack.outputs.version }}"
+          name: "quickstart-${{ steps.pack.outputs.version }}"
+          body_path: ${{ github.workspace }}/common.md
           files: output/*.run
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
