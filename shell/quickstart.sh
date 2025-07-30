@@ -6,7 +6,7 @@ rm -rf store
 mkdir -p store
 
 # 这里示例用的是 ImmortalWrt 24.10 x86_64 目标包仓库URL（请按需改）
-BASE_URL="https://downloads.immortalwrt.org/releases/24.10.2/x86/64/packages"
+BASE_URL="https://github.com/linkease/istore-packages/releases/download/prebuilt/"
 
 # 你要下载的包名列表
 PACKAGES=(
